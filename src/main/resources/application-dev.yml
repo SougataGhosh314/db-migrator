@@ -1,0 +1,15 @@
+spring:
+  application:
+    name: db-migrator
+  config:
+    activate:
+      on-profile: dev
+  datasource:
+    url: jdbc:mysql://localhost:3306/legacydb
+    username: legacy_user
+    password: legacy_pass
+
+target-datasource:
+  url: jdbc:postgresql://localhost:5432/newdb
+  username: new_user
+  password: new_pass

@@ -1,0 +1,19 @@
+spring:
+  application:
+    name: db-migrator
+  config:
+    activate:
+      on-profile: default
+  batch:
+    job:
+      enabled: false # We'll run jobs manually via JobLauncher
+    jdbc:
+      initialize-schema: always
+  datasource:
+    url: jdbc:mysql://localhost:3306/legacydb
+    username: legacy_user
+    password: legacy_pass
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  jpa:
+    hibernate:
+      ddl-auto: none
