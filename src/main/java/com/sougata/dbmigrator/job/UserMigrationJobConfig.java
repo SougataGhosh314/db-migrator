@@ -10,10 +10,8 @@ import org.springframework.batch.core.job.builder.JobBuilder;
 import org.springframework.batch.core.launch.support.RunIdIncrementer;
 import org.springframework.batch.core.repository.JobRepository;
 import org.springframework.batch.core.step.builder.StepBuilder;
-import org.springframework.batch.item.database.JdbcCursorItemReader;
-import org.springframework.batch.item.database.JdbcPagingItemReader;
-import org.springframework.batch.item.database.JpaItemWriter;
-import org.springframework.batch.item.database.Order;
+import org.springframework.batch.item.database.*;
+import org.springframework.batch.item.database.builder.JdbcBatchItemWriterBuilder;
 import org.springframework.batch.item.database.builder.JdbcCursorItemReaderBuilder;
 import org.springframework.batch.item.database.builder.JdbcPagingItemReaderBuilder;
 import org.springframework.batch.item.database.builder.JpaItemWriterBuilder;
@@ -22,10 +20,13 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.task.SimpleAsyncTaskExecutor;
+import org.springframework.core.task.TaskExecutor;
 import org.springframework.jdbc.core.BeanPropertyRowMapper;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.transaction.PlatformTransactionManager;
 
 import javax.sql.DataSource;
+import java.sql.Timestamp;
 import java.util.Map;
 
 
@@ -64,25 +65,40 @@ public class UserMigrationJobConfig {
         return new UserProcessor();
     }
 
+//    @Bean
+//    public JpaItemWriter<NewUser> newUserWriter(@Qualifier("newEntityManagerFactory") jakarta.persistence.EntityManagerFactory entityManagerFactory) {
+//        return new JpaItemWriterBuilder<NewUser>()
+//                .entityManagerFactory(entityManagerFactory)
+//                .build();
+//    }
+
     @Bean
-    public JpaItemWriter<NewUser> newUserWriter(@Qualifier("newEntityManagerFactory") jakarta.persistence.EntityManagerFactory entityManagerFactory) {
-        return new JpaItemWriterBuilder<NewUser>()
-                .entityManagerFactory(entityManagerFactory)
+    public JdbcBatchItemWriter<NewUser> newUserWriter(@Qualifier("newDataSource") DataSource dataSource) {
+        return new JdbcBatchItemWriterBuilder<NewUser>()
+                .dataSource(dataSource)
+                .sql("INSERT INTO users (name, email, registered_on) VALUES (?, ?, ?)")
+                .itemPreparedStatementSetter((user, ps) -> {
+                    ps.setString(1, user.getName());
+                    ps.setString(2, user.getEmail());
+                    ps.setTimestamp(3, Timestamp.valueOf(user.getRegisteredOn()));
+                })
                 .build();
     }
+
 
     @Bean(name = "migrateUserStep")
     public Step migrateUserStep(JobRepository jobRepository,
                                 @Qualifier("newTransactionManager") PlatformTransactionManager transactionManager,
                                 JdbcPagingItemReader<LegacyUser> legacyUserReader,
                                 UserProcessor userProcessor,
-                                JpaItemWriter<NewUser> newUserWriter) {
+                                JdbcBatchItemWriter<NewUser> newUserWriter) {
         return new StepBuilder("migrateUserStep", jobRepository)
                 .<LegacyUser, NewUser>chunk(1000, transactionManager)
                 .reader(legacyUserReader)
                 .processor(userProcessor)
                 .writer(newUserWriter)
-                .taskExecutor(new SimpleAsyncTaskExecutor())
+//                .taskExecutor(new SimpleAsyncTaskExecutor())
+                .taskExecutor(migrationTaskExecutor())
                 .throttleLimit(4) // Or 6 to match your core count
                 .build();
     }
@@ -94,4 +110,16 @@ public class UserMigrationJobConfig {
                 .start(migrateUserStep)
                 .build();
     }
+
+    @Bean
+    public TaskExecutor migrationTaskExecutor() {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(4); // or match your CPU cores
+        executor.setMaxPoolSize(4);
+        executor.setQueueCapacity(10); // small queue keeps backpressure
+        executor.setThreadNamePrefix("migration-");
+        executor.initialize();
+        return executor;
+    }
+
 }

@@ -2,6 +2,7 @@ package com.sougata.dbmigrator.model;
 
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
+import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
@@ -11,6 +12,7 @@ import java.time.LocalDateTime;
 @AllArgsConstructor
 @Entity
 @Setter
+@Getter
 @Table(name = "users")
 public class NewUser {
 
