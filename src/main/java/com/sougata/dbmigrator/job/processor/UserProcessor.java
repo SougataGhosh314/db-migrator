@@ -5,17 +5,16 @@ import com.sougata.dbmigrator.model.NewUser;
 import org.springframework.batch.item.ItemProcessor;
 import org.springframework.stereotype.Component;
 
-import java.time.LocalDateTime;
-
 @Component
-public class UserItemProcessor implements ItemProcessor<LegacyUser, NewUser> {
+public class UserProcessor implements ItemProcessor<LegacyUser, NewUser> {
 
     @Override
-    public NewUser process(LegacyUser legacyUser) {
+    public NewUser process(LegacyUser legacyUser) throws Exception {
+        System.out.println("Migrating: " + legacyUser);
         NewUser newUser = new NewUser();
-        newUser.setName(legacyUser.getFullName() != null ? legacyUser.getFullName() : legacyUser.getUsername());
+        newUser.setName(legacyUser.getFullName());
         newUser.setEmail(legacyUser.getEmail());
-        newUser.setRegisteredOn(legacyUser.getCreatedAt() != null ? legacyUser.getCreatedAt() : LocalDateTime.now());
+        newUser.setRegisteredOn(legacyUser.getCreatedAt());
         return newUser;
     }
 }

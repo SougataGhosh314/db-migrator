@@ -1,72 +1,74 @@
 package com.sougata.dbmigrator.job;
 
+import com.sougata.dbmigrator.job.processor.UserProcessor;
 import com.sougata.dbmigrator.model.LegacyUser;
 import com.sougata.dbmigrator.model.NewUser;
-import lombok.RequiredArgsConstructor;
-import org.springframework.batch.core.*;
+import org.springframework.batch.core.Job;
+import org.springframework.batch.core.Step;
 import org.springframework.batch.core.configuration.annotation.EnableBatchProcessing;
 import org.springframework.batch.core.job.builder.JobBuilder;
 import org.springframework.batch.core.launch.support.RunIdIncrementer;
 import org.springframework.batch.core.repository.JobRepository;
 import org.springframework.batch.core.step.builder.StepBuilder;
-import org.springframework.batch.core.step.skip.AlwaysSkipItemSkipPolicy;
-import org.springframework.batch.item.ItemProcessor;
-import org.springframework.batch.item.database.JpaItemWriter;
 import org.springframework.batch.item.database.JdbcCursorItemReader;
+import org.springframework.batch.item.database.JpaItemWriter;
+import org.springframework.batch.item.database.builder.JdbcCursorItemReaderBuilder;
+import org.springframework.batch.item.database.builder.JpaItemWriterBuilder;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.task.SimpleAsyncTaskExecutor;
+import org.springframework.jdbc.core.BeanPropertyRowMapper;
 import org.springframework.transaction.PlatformTransactionManager;
+
+import javax.sql.DataSource;
 
 
 @Configuration
 @EnableBatchProcessing
-@RequiredArgsConstructor
 public class UserMigrationJobConfig {
 
-    private final JobRepository jobRepository;
-    private final PlatformTransactionManager transactionManager;
-    private final JobExecutionListener jobCompletionListener;
-
     @Bean
-    public Job migrateUserJob(Step migrateUsersStep) {
-        return new JobBuilder("migrateUserJob", jobRepository)
-                .incrementer(new RunIdIncrementer())
-                .listener(jobCompletionListener)
-                .start(migrateUsersStep)
+    public JdbcCursorItemReader<LegacyUser> legacyUserReader(@Qualifier("legacyDataSource") DataSource dataSource) {
+        return new JdbcCursorItemReaderBuilder<LegacyUser>()
+                .name("legacyUserReader")
+                .dataSource(dataSource)
+                .sql("SELECT id, username, email, full_name, created_at FROM users")
+                .rowMapper(new BeanPropertyRowMapper<>(LegacyUser.class))
                 .build();
     }
 
     @Bean
-    public Step migrateUsersStep(
-            JdbcCursorItemReader<LegacyUser> legacyUserReader,
-            ItemProcessor<LegacyUser, NewUser> userItemProcessor,
-            JpaItemWriter<NewUser> newUserWriter,
-            @Value("#{jobParameters['chunkSize']}") Integer chunkSize
-    ) {
-        return new StepBuilder("migrateUsersStep", jobRepository)
-                .<LegacyUser, NewUser>chunk(chunkSize, transactionManager)
+    public UserProcessor userProcessor() {
+        return new UserProcessor();
+    }
+
+    @Bean
+    public JpaItemWriter<NewUser> newUserWriter(@Qualifier("newEntityManagerFactory") jakarta.persistence.EntityManagerFactory entityManagerFactory) {
+        return new JpaItemWriterBuilder<NewUser>()
+                .entityManagerFactory(entityManagerFactory)
+                .build();
+    }
+
+    @Bean(name = "migrateUserStep")
+    public Step migrateUserStep(JobRepository jobRepository,
+                                @Qualifier("newTransactionManager") PlatformTransactionManager transactionManager,
+                                JdbcCursorItemReader<LegacyUser> legacyUserReader,
+                                UserProcessor userProcessor,
+                                JpaItemWriter<NewUser> newUserWriter) {
+        return new StepBuilder("migrateUserStep", jobRepository)
+                .<LegacyUser, NewUser>chunk(1000, transactionManager)
                 .reader(legacyUserReader)
-                .processor(userItemProcessor)
+                .processor(userProcessor)
                 .writer(newUserWriter)
-                .faultTolerant()
-                .skipPolicy(new AlwaysSkipItemSkipPolicy())
-                .listener(stepExecutionListener())
                 .build();
     }
 
-    @Bean
-    public StepExecutionListener stepExecutionListener() {
-        return new StepExecutionListener() {
-            @Override
-            public void beforeStep(StepExecution stepExecution) {
-                // Custom logic
-            }
-
-            @Override
-            public ExitStatus afterStep(StepExecution stepExecution) {
-                return stepExecution.getExitStatus();
-            }
-        };
+    @Bean(name = "userMigrationJob")
+    public Job userMigrationJob(JobRepository jobRepository, Step migrateUserStep) {
+        return new JobBuilder("userMigrationJob", jobRepository)
+                .incrementer(new RunIdIncrementer())
+                .start(migrateUserStep)
+                .build();
     }
 }

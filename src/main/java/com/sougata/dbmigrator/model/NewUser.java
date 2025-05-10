@@ -1,12 +1,17 @@
 package com.sougata.dbmigrator.model;
 
 import jakarta.persistence.*;
-import lombok.Data;
+import lombok.AllArgsConstructor;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
+
 import java.time.LocalDateTime;
 
+@NoArgsConstructor
+@AllArgsConstructor
 @Entity
+@Setter
 @Table(name = "users")
-@Data
 public class NewUser {
 
     @Id
