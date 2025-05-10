@@ -145,7 +145,3 @@ You can run the Spring Boot app, and it will execute the `userMigrationJob` conf
 Built with ❤️ by Sougata Ghosh to demonstrate scalable batch ETL with Spring.
 
 ---
-
-## License
-
-MIT or your preferred license.
