@@ -36,7 +36,7 @@ public class LegacyDbSeeder {
     }
 
     public void runLarge(int totalUsers) {
-        int batchSize = 1000;
+        int batchSize = 5000;
         List<Object[]> batchArgs = new ArrayList<>(batchSize);
 
         for (int i = 1; i <= totalUsers; i++) {
